@@ -20,17 +20,10 @@
 
 # Top directory CMake project for HackRF firmware
 
-cmake_minimum_required(VERSION 2.8.9)
+cmake_minimum_required(VERSION 3.1.3)
 set(CMAKE_TOOLCHAIN_FILE toolchain-arm-cortex-m.cmake)
 
-project (hackrf_firmware_all)
+project (hackrf_firmware_all C)
 
 add_subdirectory(blinky)
-add_subdirectory(mixertx)
-add_subdirectory(sgpio)
-add_subdirectory(sgpio-rx)
-add_subdirectory(simpletx)
-add_subdirectory(startup)
-add_subdirectory(startup_systick)
-add_subdirectory(startup_systick_perfo)
 add_subdirectory(hackrf_usb)

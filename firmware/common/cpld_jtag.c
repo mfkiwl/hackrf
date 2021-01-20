@@ -22,7 +22,6 @@
 #include "cpld_jtag.h"
 #include "hackrf_core.h"
 #include "xapp058/micro.h"
-#include <libopencm3/lpc43xx/gpio.h>
 #include <libopencm3/lpc43xx/scu.h>
 #include <stdint.h>
 
@@ -30,47 +29,61 @@ static refill_buffer_cb refill_buffer;
 static uint32_t xsvf_buffer_len, xsvf_pos;
 static unsigned char* xsvf_buffer;
 
-void cpld_jtag_setup(void) {
-	scu_pinmux(SCU_PINMUX_CPLD_TDO, SCU_GPIO_NOPULL | SCU_CONF_FUNCTION4);
-	scu_pinmux(SCU_PINMUX_CPLD_TCK, SCU_GPIO_NOPULL | SCU_CONF_FUNCTION0);
-	scu_pinmux(SCU_PINMUX_CPLD_TMS, SCU_GPIO_NOPULL | SCU_CONF_FUNCTION0);
-	scu_pinmux(SCU_PINMUX_CPLD_TDI, SCU_GPIO_NOPULL | SCU_CONF_FUNCTION0);
-	
-	/* TDO is an input */
-	GPIO_DIR(PORT_CPLD_TDO) &= ~PIN_CPLD_TDO;
+void cpld_jtag_take(jtag_t* const jtag) {
+	const jtag_gpio_t* const gpio = jtag->gpio;
 
-	/* the rest are outputs */
-	GPIO_DIR(PORT_CPLD_TCK) |= PIN_CPLD_TCK;
-	GPIO_DIR(PORT_CPLD_TMS) |= PIN_CPLD_TMS;
-	GPIO_DIR(PORT_CPLD_TDI) |= PIN_CPLD_TDI;
+	/* Set initial GPIO state to the voltages of the internal or external pull-ups/downs,
+	 * to avoid any glitches.
+	 */
+#ifdef HACKRF_ONE
+	gpio_set(gpio->gpio_pp_tms);
+#endif
+	gpio_set(gpio->gpio_tms);
+	gpio_set(gpio->gpio_tdi);
+	gpio_clear(gpio->gpio_tck);
+
+#ifdef HACKRF_ONE
+	/* Do not drive PortaPack-specific TMS pin initially, just to be cautious. */
+	gpio_input(gpio->gpio_pp_tms);
+	gpio_input(gpio->gpio_pp_tdo);
+#endif
+	gpio_output(gpio->gpio_tms);
+	gpio_output(gpio->gpio_tdi);
+	gpio_output(gpio->gpio_tck);
+	gpio_input(gpio->gpio_tdo);
 }
 
-/* set pins as inputs so we don't interfere with an external JTAG device */
-void cpld_jtag_release(void) {
-	scu_pinmux(SCU_PINMUX_CPLD_TDO, SCU_GPIO_NOPULL | SCU_CONF_FUNCTION4);
-	scu_pinmux(SCU_PINMUX_CPLD_TCK, SCU_GPIO_NOPULL | SCU_CONF_FUNCTION0);
-	scu_pinmux(SCU_PINMUX_CPLD_TMS, SCU_GPIO_NOPULL | SCU_CONF_FUNCTION0);
-	scu_pinmux(SCU_PINMUX_CPLD_TDI, SCU_GPIO_NOPULL | SCU_CONF_FUNCTION0);
-	
-	GPIO_DIR(PORT_CPLD_TDO) &= ~PIN_CPLD_TDO;
-	GPIO_DIR(PORT_CPLD_TCK) &= ~PIN_CPLD_TCK;
-	GPIO_DIR(PORT_CPLD_TMS) &= ~PIN_CPLD_TMS;
-	GPIO_DIR(PORT_CPLD_TDI) &= ~PIN_CPLD_TDI;
+void cpld_jtag_release(jtag_t* const jtag) {
+	const jtag_gpio_t* const gpio = jtag->gpio;
+
+	/* Make all pins inputs when JTAG interface not active.
+	 * Let the pull-ups/downs do the work.
+	 */
+#ifdef HACKRF_ONE
+	/* Do not drive PortaPack-specific pins, initially, just to be cautious. */
+	gpio_input(gpio->gpio_pp_tms);
+	gpio_input(gpio->gpio_pp_tdo);
+#endif
+	gpio_input(gpio->gpio_tms);
+	gpio_input(gpio->gpio_tdi);
+	gpio_input(gpio->gpio_tck);
+	gpio_input(gpio->gpio_tdo);
 }
 
 /* return 0 if success else return error code see xsvfExecute() */
 int cpld_jtag_program(
+		jtag_t* const jtag,
         const uint32_t buffer_length,
         unsigned char* const buffer,
         refill_buffer_cb refill
 ) {
 	int error;
-	cpld_jtag_setup();
+	cpld_jtag_take(jtag);
 	xsvf_buffer = buffer;
 	xsvf_buffer_len = buffer_length;
         refill_buffer = refill;
-	error = xsvfExecute();
-	cpld_jtag_release();
+	error = xsvfExecute(jtag->gpio);
+	cpld_jtag_release(jtag);
 	
 	return error;
 }

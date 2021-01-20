@@ -23,11 +23,9 @@
 
 cmake_minimum_required(VERSION 2.8)
 project(hackrf-tools C)
-set(MAJOR_VERSION 0)
-set(MINOR_VERSION 3)
 set(PACKAGE hackrf-tools)
-set(VERSION_STRING ${MAJOR_VERSION}.${MINOR_VERSION})
-set(VERSION ${VERSION_STRING})
+include(${PROJECT_SOURCE_DIR}/../cmake/set_release.cmake)
+add_definitions(-DTOOL_RELEASE="${RELEASE}")
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/../cmake/modules)
 
 if(MSVC)
@@ -51,12 +49,11 @@ add_subdirectory(src)
 # Create uninstall target
 ########################################################################
 
-if(NOT hackrf_all_SOURCE_DIR)
+if(NOT HackRF_SOURCE_DIR)
 configure_file(
     ${PROJECT_SOURCE_DIR}/../cmake/cmake_uninstall.cmake.in
     ${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake
 @ONLY)
-
 
 add_custom_target(uninstall
     ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake

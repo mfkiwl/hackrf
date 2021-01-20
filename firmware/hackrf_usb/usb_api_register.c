@@ -22,13 +22,15 @@
 
 #include "usb_api_register.h"
 
+#include <hackrf_core.h>
 #include <usb_queue.h>
 #include <max2837.h>
-#include <si5351c.h>
 #include <rffc5071.h>
 
 #include <stddef.h>
 #include <stdint.h>
+
+#include <hackrf_core.h>
 
 usb_request_status_t usb_vendor_request_write_max2837(
 	usb_endpoint_t* const endpoint,
@@ -37,7 +39,7 @@ usb_request_status_t usb_vendor_request_write_max2837(
 	if( stage == USB_TRANSFER_STAGE_SETUP ) {
 		if( endpoint->setup.index < MAX2837_NUM_REGS ) {
 			if( endpoint->setup.value < MAX2837_DATA_REGS_MAX_VALUE ) {
-				max2837_reg_write(endpoint->setup.index, endpoint->setup.value);
+				max2837_reg_write(&max2837, endpoint->setup.index, endpoint->setup.value);
 				usb_transfer_schedule_ack(endpoint->in);
 				return USB_REQUEST_STATUS_OK;
 			}
@@ -54,7 +56,7 @@ usb_request_status_t usb_vendor_request_read_max2837(
 ) {
 	if( stage == USB_TRANSFER_STAGE_SETUP ) {
 		if( endpoint->setup.index < MAX2837_NUM_REGS ) {
-			const uint16_t value = max2837_reg_read(endpoint->setup.index);
+			const uint16_t value = max2837_reg_read(&max2837, endpoint->setup.index);
 			endpoint->buffer[0] = value & 0xff;
 			endpoint->buffer[1] = value >> 8;
 			usb_transfer_schedule_block(endpoint->in, &endpoint->buffer, 2,
@@ -75,7 +77,7 @@ usb_request_status_t usb_vendor_request_write_si5351c(
 	if( stage == USB_TRANSFER_STAGE_SETUP ) {
 		if( endpoint->setup.index < 256 ) {
 			if( endpoint->setup.value < 256 ) {
-				si5351c_write_single(endpoint->setup.index, endpoint->setup.value);
+				si5351c_write_single(&clock_gen, endpoint->setup.index, endpoint->setup.value);
 				usb_transfer_schedule_ack(endpoint->in);
 				return USB_REQUEST_STATUS_OK;
 			}
@@ -92,7 +94,7 @@ usb_request_status_t usb_vendor_request_read_si5351c(
 ) {
 	if( stage == USB_TRANSFER_STAGE_SETUP ) {
 		if( endpoint->setup.index < 256 ) {
-			const uint8_t value = si5351c_read_single(endpoint->setup.index);
+			const uint8_t value = si5351c_read_single(&clock_gen, endpoint->setup.index);
 			endpoint->buffer[0] = value;
 			usb_transfer_schedule_block(endpoint->in, &endpoint->buffer, 1,
 						    NULL, NULL);
@@ -105,6 +107,7 @@ usb_request_status_t usb_vendor_request_read_si5351c(
 	}
 }
 
+#ifndef RAD1O
 usb_request_status_t usb_vendor_request_write_rffc5071(
 	usb_endpoint_t* const endpoint,
 	const usb_transfer_stage_t stage
@@ -113,7 +116,7 @@ usb_request_status_t usb_vendor_request_write_rffc5071(
 	{
 		if( endpoint->setup.index < RFFC5071_NUM_REGS ) 
 		{
-			rffc5071_reg_write(endpoint->setup.index, endpoint->setup.value);
+			rffc5071_reg_write(&mixer, endpoint->setup.index, endpoint->setup.value);
 			usb_transfer_schedule_ack(endpoint->in);
 			return USB_REQUEST_STATUS_OK;
 		}
@@ -132,7 +135,7 @@ usb_request_status_t usb_vendor_request_read_rffc5071(
 	{
 		if( endpoint->setup.index < RFFC5071_NUM_REGS ) 
 		{
-			value = rffc5071_reg_read(endpoint->setup.index);
+			value = rffc5071_reg_read(&mixer, endpoint->setup.index);
 			endpoint->buffer[0] = value & 0xff;
 			endpoint->buffer[1] = value >> 8;
 			usb_transfer_schedule_block(endpoint->in, &endpoint->buffer, 2,
@@ -144,4 +147,16 @@ usb_request_status_t usb_vendor_request_read_rffc5071(
 	} else {
 		return USB_REQUEST_STATUS_OK;
 	}
+}
+#endif
+
+usb_request_status_t usb_vendor_request_set_clkout_enable(
+	usb_endpoint_t* const endpoint,
+	const usb_transfer_stage_t stage
+) {
+	if (stage == USB_TRANSFER_STAGE_SETUP) {
+		si5351c_clkout_enable(&clock_gen, endpoint->setup.value);
+		usb_transfer_schedule_ack(endpoint->in);
+	}
+	return USB_REQUEST_STATUS_OK;
 }

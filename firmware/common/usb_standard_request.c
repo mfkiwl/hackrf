@@ -130,13 +130,17 @@ static usb_request_status_t usb_send_descriptor(
 static usb_request_status_t usb_send_descriptor_string(
 	usb_endpoint_t* const endpoint
 ) {
-	uint_fast8_t index = endpoint->setup.value_l;
-	for( uint_fast8_t i=0; endpoint->device->descriptor_strings[i] != 0; i++ ) {
-		if( i == index ) {
-			return usb_send_descriptor(endpoint, endpoint->device->descriptor_strings[i]);
+	if ((endpoint->setup.value_l == 0xee) &&
+		(endpoint->device->wcid_string_descriptor != NULL)) { /* MS WCID string */
+		return usb_send_descriptor(endpoint, endpoint->device->wcid_string_descriptor);
+	} else {
+		uint_fast8_t index = endpoint->setup.value_l;
+		for( uint_fast8_t i=0; endpoint->device->descriptor_strings[i] != 0; i++ ) {
+			if( i == index ) {
+				return usb_send_descriptor(endpoint, endpoint->device->descriptor_strings[i]);
+			}
 		}
 	}
-
 	return USB_REQUEST_STATUS_STALL;
 }
 
@@ -210,6 +214,26 @@ static usb_request_status_t usb_standard_request_get_descriptor(
 	default:
 		return USB_REQUEST_STATUS_STALL;
 	}
+}
+
+usb_request_status_t usb_vendor_request_read_wcid(
+		usb_endpoint_t* const endpoint,
+		const usb_transfer_stage_t stage
+) {
+	if( stage == USB_TRANSFER_STAGE_SETUP ) {
+		if ((endpoint->setup.index == 0x04) &&
+			(endpoint->device->wcid_feature_descriptor != NULL)) {
+			usb_send_descriptor(endpoint, endpoint->device->wcid_feature_descriptor);
+			return USB_REQUEST_STATUS_OK;
+		}
+		if ((endpoint->setup.index == 0x05) &&
+			(endpoint->device->wcid_extended_properties_descriptor != NULL)) {
+			usb_send_descriptor(endpoint, endpoint->device->wcid_extended_properties_descriptor);
+			return USB_REQUEST_STATUS_OK;
+		}
+		return USB_REQUEST_STATUS_STALL;
+	}
+	return USB_REQUEST_STATUS_OK;
 }
 
 /*********************************************************************/
@@ -313,6 +337,40 @@ static usb_request_status_t usb_standard_request_get_configuration(
 	}
 }
 
+
+static usb_request_status_t usb_standard_request_get_status_setup(
+	usb_endpoint_t* const endpoint
+) {
+	if( endpoint->setup.length == 2 ) {
+		endpoint->buffer[0] = 0;
+		endpoint->buffer[1] = 0;
+
+		usb_transfer_schedule_block(endpoint->in, &endpoint->buffer, 2, NULL, NULL);
+		usb_transfer_schedule_ack(endpoint->out);
+		return USB_REQUEST_STATUS_OK;
+	} else {
+		return USB_REQUEST_STATUS_STALL;
+	}
+}
+
+
+static usb_request_status_t usb_standard_request_get_status(
+	usb_endpoint_t* const endpoint,
+	const usb_transfer_stage_t stage
+) {
+	switch( stage ) {
+	case USB_TRANSFER_STAGE_SETUP:
+		return usb_standard_request_get_status_setup(endpoint);
+
+	case USB_TRANSFER_STAGE_DATA:
+	case USB_TRANSFER_STAGE_STATUS:
+		return USB_REQUEST_STATUS_OK;
+
+	default:
+		return USB_REQUEST_STATUS_STALL;
+	}
+}
+
 /*********************************************************************/
 
 usb_request_status_t usb_standard_request(
@@ -320,6 +378,9 @@ usb_request_status_t usb_standard_request(
 	const usb_transfer_stage_t stage
 ) {
 	switch( endpoint->setup.request ) {
+	case USB_STANDARD_REQUEST_GET_STATUS:
+		return usb_standard_request_get_status(endpoint, stage);
+
 	case USB_STANDARD_REQUEST_GET_DESCRIPTOR:
 		return usb_standard_request_get_descriptor(endpoint, stage);
 	

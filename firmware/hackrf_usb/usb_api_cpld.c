@@ -22,10 +22,9 @@
 
 #include "usb_api_cpld.h"
 
-#include <libopencm3/lpc43xx/gpio.h>
-
 #include <hackrf_core.h>
 #include <cpld_jtag.h>
+#include <cpld_xc2c.h>
 #include <usb_queue.h>
 
 #include "usb_endpoint.h"
@@ -34,7 +33,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-volatile bool start_cpld_update = false;
 uint8_t cpld_xsvf_buffer[512];
 volatile bool cpld_wait = false;
 
@@ -62,9 +60,6 @@ static void refill_cpld_buffer(void)
 
 void cpld_update(void)
 {
-	#define WAIT_LOOP_DELAY (6000000)
-	#define ALL_LEDS  (PIN_LED1|PIN_LED2|PIN_LED3)
-	int i;
 	int error;
 
 	usb_queue_flush_endpoint(&usb_endpoint_bulk_in);
@@ -72,25 +67,40 @@ void cpld_update(void)
 
 	refill_cpld_buffer();
 
-	error = cpld_jtag_program(sizeof(cpld_xsvf_buffer),
+	error = cpld_jtag_program(&jtag_cpld, sizeof(cpld_xsvf_buffer),
 				  cpld_xsvf_buffer,
 				  refill_cpld_buffer);
 	if(error == 0)
 	{
-		/* blink LED1, LED2, and LED3 on success */
-		while (1)
-		{
-			gpio_set(PORT_LED1_3, ALL_LEDS); /* LEDs on */
-			for (i = 0; i < WAIT_LOOP_DELAY; i++)  /* Wait a bit. */
-				__asm__("nop");
-			gpio_clear(PORT_LED1_3, ALL_LEDS); /* LEDs off */
-			for (i = 0; i < WAIT_LOOP_DELAY; i++)  /* Wait a bit. */
-				__asm__("nop");
-		}
+		halt_and_flash(6000000);
 	}else
 	{
 		/* LED3 (Red) steady on error */
-		gpio_set(PORT_LED1_3, PIN_LED3); /* LEDs on */
+		led_on(LED3);
 		while (1);
 	}
+}
+
+usb_request_status_t usb_vendor_request_cpld_checksum(
+	usb_endpoint_t* const endpoint, const usb_transfer_stage_t stage)
+{
+	static uint32_t cpld_crc;
+	uint8_t length;
+
+	if (stage == USB_TRANSFER_STAGE_SETUP) 
+	{
+		cpld_jtag_take(&jtag_cpld);
+		const bool checksum_success = cpld_xc2c64a_jtag_checksum(&jtag_cpld, &cpld_hackrf_verify, &cpld_crc);
+		cpld_jtag_release(&jtag_cpld);
+
+		if(!checksum_success) {
+			return USB_REQUEST_STATUS_STALL;
+		}
+		
+		length = (uint8_t)sizeof(cpld_crc);
+		usb_transfer_schedule_block(endpoint->in, &cpld_crc, length,
+					    NULL, NULL);
+		usb_transfer_schedule_ack(endpoint->out);
+	}
+	return USB_REQUEST_STATUS_OK;
 }

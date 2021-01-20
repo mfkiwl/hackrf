@@ -45,6 +45,8 @@ uint8_t data[MAX_XSVF_LENGTH];
 
 static struct option long_options[] = {
 	{ "xsvf", required_argument, 0, 'x' },
+	{ "device", required_argument, 0, 'd' },
+	{ "help", no_argument, 0, 'h' },
 	{ 0, 0, 0, 0 },
 };
 
@@ -79,7 +81,9 @@ int parse_int(char* s, uint32_t* const value)
 static void usage()
 {
 	printf("Usage:\n");
-	printf("\t-x <filename>: XSVF file to be written to CPLD.\n");
+	printf("\t-h, --help: this help\n");
+	printf("\t-x, --xsvf <filename>: XSVF file to be written to CPLD.\n");
+	printf("\t-d, --device <serialnumber>: Serial number of device, if multiple devices\n");
 }
 
 int main(int argc, char** argv)
@@ -88,6 +92,7 @@ int main(int argc, char** argv)
 	uint32_t length = 0;
 	uint32_t total_length = 0;
 	const char* path = NULL;
+	const char* serial_number = NULL;
 	hackrf_device* device = NULL;
 	int result = HACKRF_SUCCESS;
 	int option_index = 0;
@@ -95,21 +100,23 @@ int main(int argc, char** argv)
 	ssize_t bytes_read;
 	uint8_t* pdata = &data[0];
 
-	while ((opt = getopt_long(argc, argv, "x:", long_options,
+	while ((opt = getopt_long(argc, argv, "x:d:h?", long_options,
 			&option_index)) != EOF) {
 		switch (opt) {
 		case 'x':
 			path = optarg;
 			break;
 
-		default:
+		case 'd':
+			serial_number = optarg;
+			break;
+		case 'h':
+		case '?':
 			usage();
-			return EXIT_FAILURE;
-		}
+			return EXIT_SUCCESS;
 
-		if (result != HACKRF_SUCCESS) {
-			fprintf(stderr, "argument error: %s (%d)\n",
-					hackrf_error_name(result), result);
+		default:
+			fprintf(stderr, "unknown argument '-%c %s'\n", opt, optarg);
 			usage();
 			return EXIT_FAILURE;
 		}
@@ -158,7 +165,7 @@ int main(int argc, char** argv)
 		return EXIT_FAILURE;
 	}
 
-	result = hackrf_open(&device);
+	result = hackrf_open_by_serial(serial_number, &device);
 	if (result != HACKRF_SUCCESS) {
 		fprintf(stderr, "hackrf_open() failed: %s (%d)\n",
 				hackrf_error_name(result), result);
