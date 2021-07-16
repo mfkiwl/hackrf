@@ -398,7 +398,7 @@ int main(int argc, char** argv) {
 	struct timeval time_now;
 	struct timeval time_prev;
 	float time_diff;
-	float sweep_rate;
+	float sweep_rate = 0;
 	unsigned int lna_gain=16, vga_gain=20;
 	uint32_t freq_min = 0;
 	uint32_t freq_max = 6000;
@@ -584,6 +584,12 @@ int main(int argc, char** argv) {
 		window[i] = (float) (0.5f * (1.0f - cos(2 * M_PI * i / (fftSize - 1))));
 	}
 
+#ifdef _MSC_VER
+	if(binary_output) {
+		_setmode(_fileno(stdout), _O_BINARY);
+	}
+#endif
+
 	result = hackrf_init();
 	if( result != HACKRF_SUCCESS ) {
 		fprintf(stderr, "hackrf_init() failed: %s (%d)\n", hackrf_error_name(result), result);
@@ -741,6 +747,8 @@ int main(int argc, char** argv) {
 
 	gettimeofday(&time_now, NULL);
 	time_diff = TimevalDiff(&time_now, &t_start);
+	if((sweep_rate == 0) && (time_diff > 0))
+		sweep_rate = sweep_count / time_diff;
 	fprintf(stderr, "Total sweeps: %" PRIu64 " in %.5f seconds (%.2f sweeps/second)\n",
 			sweep_count, time_diff, sweep_rate);
 
